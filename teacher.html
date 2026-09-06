@@ -7,6 +7,9 @@
 <title>لوحة المعلم | تصنيف المخلوقات الحية</title>
 <style>
 :root{--bg:#eef4ee;--panel:#fff;--text:#173b2b;--muted:#66786e;--green:#236447;--soft:#e4f0e5;--gold:#b27b21;--bad:#a43d35}*{box-sizing:border-box}body{margin:0;background:linear-gradient(145deg,#eef4ee,#dceae0);color:var(--text);font-family:"Majalla UI","Sakkal Majalla",Tahoma,sans-serif;font-size:18px;min-height:100vh;padding:18px}button{cursor:pointer}.wrap{max-width:1200px;margin:auto}.card{background:var(--panel);border-radius:24px;padding:24px;box-shadow:0 18px 45px #173b2b18}.login{max-width:480px;margin:12vh auto;text-align:center}.login span{font-size:56px}.login input,.filter select{width:100%;min-height:50px;border:2px solid #ccd9cf;border-radius:14px;padding:10px 14px;background:#fff;color:var(--text);font:inherit}.login button,.refresh,.danger{border:0;border-radius:14px;background:var(--green);color:#fff;padding:12px 22px;font:inherit;font-weight:700;min-height:48px}.refresh{margin-top:12px}.danger{background:var(--bad)}.error{color:var(--bad);min-height:28px}.head{display:flex;justify-content:space-between;align-items:center;gap:12px}.head h1{margin:0}.head p{margin:4px 0;color:var(--muted)}.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}.tab{border:0;border-radius:14px;background:var(--soft);color:var(--text);padding:11px 18px;font:inherit;font-weight:700}.tab.active{background:var(--green);color:#fff}.view[hidden]{display:none}.stats{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:20px 0}.stat{padding:14px;border-radius:16px;background:var(--soft);text-align:center}.stat strong{display:block;font-size:25px}.filter{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:16px 0}.filter select{max-width:260px}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:900px}th,td{text-align:right;padding:12px 10px;border-bottom:1px solid #e0e8e2;vertical-align:top}th{background:var(--green);color:#fff;position:sticky;top:0}tr.needs td{background:#fff2f1}.message{white-space:pre-wrap;min-width:300px;line-height:1.6}.empty{text-align:center;color:var(--muted);padding:28px}.note{color:var(--muted);font-size:15px}.status{min-height:28px;color:var(--bad);font-weight:700}.credit{display:flex;justify-content:center;gap:8px 15px;flex-wrap:wrap;color:var(--muted);font-size:14px;margin:18px auto}.credit strong{color:var(--text)}@media(max-width:760px){body{padding:10px}.card{padding:16px}.stats{grid-template-columns:repeat(2,1fr)}.head{align-items:flex-start;flex-direction:column}.filter{align-items:flex-start;flex-direction:column}.filter select,.danger,.refresh{width:100%}.tabs{display:grid;grid-template-columns:1fr 1fr}.credit{flex-direction:column;align-items:center}}
+.export{border:0;border-radius:14px;background:var(--gold);color:#fff;padding:12px 22px;font:inherit;font-weight:700;min-height:48px}
+button:disabled{cursor:not-allowed;opacity:.55}
+@media(max-width:760px){.export{width:100%}.filter select{max-width:none}}
 </style>
 </head>
 <body>
@@ -18,6 +21,26 @@
   const app=document.getElementById('app');
   const safe=value=>String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
   let teacherCode='';
+  const collator=new Intl.Collator('ar',{numeric:true,sensitivity:'base'});
+
+  const cleanCell=value=>{
+    const text=String(value??'').replace(/\r?\n/g,' ').trim();
+    return /^[=+\-@]/.test(text)?`'${text}`:text;
+  };
+
+  function exportCsv(filename,headers,records){
+    const quote=value=>`"${cleanCell(value).replace(/"/g,'""')}"`;
+    const csv=[headers.map(quote).join(','),...records.map(record=>record.map(quote).join(','))].join('\r\n');
+    const blob=new Blob(['\ufeff',csv],{type:'text/csv;charset=utf-8'});
+    const link=document.createElement('a');
+    link.href=URL.createObjectURL(blob);
+    link.download=filename;
+    document.body.appendChild(link);
+    link.click();
+    const objectUrl=link.href;
+    link.remove();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+  }
 
   async function getTeacherData(code){
     const url=`${API_URL}?action=teacher&teacherCode=${encodeURIComponent(code)}&_=${Date.now()}`;
@@ -65,7 +88,7 @@
   function dashboard(data){
     const rows=Array.isArray(data.results)?data.results:[],feedback=Array.isArray(data.feedback)?data.feedback:[];
     const classes=[...new Set(rows.map(row=>String(row.classroom||'').trim()).filter(Boolean))].sort();
-    app.innerHTML=`<section class="card"><div class="head"><div><p>علوم خامس ابتدائي</p><h1>لوحة المعلم</h1><p>نتائج النشاط والتواصل والملاحظات</p></div><button class="refresh" id="refresh">تحديث البيانات</button></div><div class="tabs"><button class="tab active" data-view="results">نتائج الطلاب (${rows.length})</button><button class="tab" data-view="feedback">التواصل والملاحظات (${feedback.length})</button></div><section class="view" id="results-view"><div class="filter"><label for="class-filter">الفصل:</label><select id="class-filter"><option value="">كل الفصول</option>${classes.map(value=>`<option value="${safe(value)}">${safe(value)}</option>`).join('')}</select><button class="danger" id="clear">مسح جميع النتائج</button></div><div id="status" class="status" role="status"></div><div id="stats" class="stats"></div><div class="table-wrap"><table><thead><tr><th>الطالب</th><th>الفصل</th><th>المدرسة</th><th>الدرجة</th><th>النسبة</th><th>المحاولة</th><th>المدة</th><th>التاريخ</th></tr></thead><tbody id="results-body"></tbody></table></div><p class="note">تظهر المحاولة باللون الأحمر عندما تكون النسبة أقل من 60%.</p></section><section class="view" id="feedback-view" hidden><div class="filter"><label for="type-filter">نوع الرسالة:</label><select id="type-filter"><option value="">جميع الرسائل</option><option>شكر</option><option>ملاحظة</option><option>اقتراح</option><option>تواصل</option></select></div><div id="feedback-stats" class="stats"></div><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الاسم</th><th>الرسالة</th></tr></thead><tbody id="feedback-body"></tbody></table></div></section></section>`;
+    app.innerHTML=`<section class="card"><div class="head"><div><p>علوم خامس ابتدائي</p><h1>لوحة المعلم</h1><p>نتائج النشاط والتواصل والملاحظات</p></div><button class="refresh" id="refresh">تحديث البيانات</button></div><div class="tabs"><button class="tab active" data-view="results">نتائج الطلاب (${rows.length})</button><button class="tab" data-view="feedback">التواصل والملاحظات (${feedback.length})</button></div><section class="view" id="results-view"><div class="filter"><label for="class-filter">الفصل:</label><select id="class-filter"><option value="">كل الفصول</option>${classes.map(value=>`<option value="${safe(value)}">${safe(value)}</option>`).join('')}</select><label for="sort-results">ترتيب النتائج:</label><select id="sort-results"><option value="date">الأحدث أولًا</option><option value="class">حسب الفصل</option><option value="name">حسب اسم الطالب</option><option value="high">الأعلى درجة</option><option value="low">الأقل درجة</option></select><button class="export" id="export-results">تصدير النتائج</button><button class="danger" id="clear">مسح جميع النتائج</button></div><div id="status" class="status" role="status"></div><div id="stats" class="stats"></div><div class="table-wrap"><table><thead><tr><th>الطالب</th><th>الفصل</th><th>المدرسة</th><th>الدرجة</th><th>النسبة</th><th>المحاولة</th><th>المدة</th><th>التاريخ</th></tr></thead><tbody id="results-body"></tbody></table></div><p class="note">يُصدَّر ما يظهر بعد اختيار الفصل والترتيب. تظهر المحاولة باللون الأحمر عندما تكون النسبة أقل من 60%.</p></section><section class="view" id="feedback-view" hidden><div class="filter"><label for="type-filter">نوع الرسالة:</label><select id="type-filter"><option value="">جميع الرسائل</option><option>شكر</option><option>ملاحظة</option><option>اقتراح</option><option>تواصل</option></select><button class="export" id="export-feedback">تصدير الملاحظات</button></div><div id="feedback-stats" class="stats"></div><div class="table-wrap"><table><thead><tr><th>التاريخ</th><th>النوع</th><th>الاسم</th><th>الرسالة</th></tr></thead><tbody id="feedback-body"></tbody></table></div></section></section>`;
 
     document.querySelectorAll('.tab').forEach(tab=>tab.onclick=()=>{
       document.querySelectorAll('.tab').forEach(button=>button.classList.toggle('active',button===tab));
@@ -73,13 +96,25 @@
       document.getElementById('feedback-view').hidden=tab.dataset.view!=='feedback';
     });
 
-    const classFilter=document.getElementById('class-filter'),resultsBody=document.getElementById('results-body'),stats=document.getElementById('stats'),clear=document.getElementById('clear');
+    const classFilter=document.getElementById('class-filter'),sortResults=document.getElementById('sort-results'),resultsBody=document.getElementById('results-body'),stats=document.getElementById('stats'),clear=document.getElementById('clear'),exportResults=document.getElementById('export-results');
+    function visibleResults(){
+      const visible=(classFilter.value?rows.filter(row=>String(row.classroom||'').trim()===classFilter.value):rows).slice();
+      const sorters={
+        class:(a,b)=>collator.compare(String(a.classroom||''),String(b.classroom||''))||collator.compare(String(a.name||''),String(b.name||'')),
+        name:(a,b)=>collator.compare(String(a.name||''),String(b.name||'')),
+        high:(a,b)=>(Number(b.percent)||0)-(Number(a.percent)||0),
+        low:(a,b)=>(Number(a.percent)||0)-(Number(b.percent)||0),
+        date:(a,b)=>new Date(b.date||0)-new Date(a.date||0)
+      };
+      return visible.sort(sorters[sortResults.value]||sorters.date);
+    }
     function paintResults(){
-      const visible=classFilter.value?rows.filter(row=>String(row.classroom||'')===classFilter.value):rows;
+      const visible=visibleResults();
       const percents=visible.map(row=>Number(row.percent)||0),average=percents.length?Math.round(percents.reduce((a,b)=>a+b,0)/percents.length):0,high=percents.length?Math.max(...percents):0,low=percents.length?Math.min(...percents):0;
       clear.textContent=classFilter.value?`مسح نتائج ${classFilter.value}`:'مسح جميع النتائج';clear.disabled=!visible.length;
       stats.innerHTML=`<div class="stat"><strong>${visible.length}</strong>المحاولات</div><div class="stat"><strong>${average}%</strong>المتوسط</div><div class="stat"><strong>${high}%</strong>الأعلى</div><div class="stat"><strong>${low}%</strong>الأقل</div><div class="stat"><strong>${percents.filter(percent=>percent<60).length}</strong>يحتاجون مراجعة</div>`;
       resultsBody.innerHTML=visible.map(row=>`<tr class="${Number(row.percent)<60?'needs':''}"><td>${safe(row.name)}</td><td>${safe(row.classroom)}</td><td>${safe(row.school||'—')}</td><td>${Number(row.score)||0}/${Number(row.total)||13}</td><td>${Number(row.percent)||0}%</td><td>${Number(row.attempts)||1}</td><td>${Math.max(1,Math.round((Number(row.duration_sec)||0)/60))} د</td><td>${safe(row.date||'')}</td></tr>`).join('')||'<tr><td colspan="8" class="empty">لا توجد نتائج مسجلة.</td></tr>';
+      exportResults.disabled=!visible.length;
     }
 
     const typeFilter=document.getElementById('type-filter'),feedbackBody=document.getElementById('feedback-body'),feedbackStats=document.getElementById('feedback-stats');
@@ -90,7 +125,20 @@
       feedbackBody.innerHTML=visible.map(item=>`<tr><td>${safe(item.date||'')}</td><td>${safe(item.type||'ملاحظة')}</td><td>${safe(item.name||'بدون اسم')}</td><td class="message">${safe(item.message||'')}</td></tr>`).join('')||'<tr><td colspan="4" class="empty">لا توجد رسائل في هذا التصنيف.</td></tr>';
     }
 
-    classFilter.onchange=paintResults;clear.onclick=()=>clearResults(classFilter.value);typeFilter.onchange=paintFeedback;document.getElementById('refresh').onclick=refreshDashboard;paintResults();paintFeedback();
+    classFilter.onchange=paintResults;
+    sortResults.onchange=paintResults;
+    clear.onclick=()=>clearResults(classFilter.value);
+    exportResults.onclick=()=>{
+      const visible=visibleResults();
+      exportCsv(`نتائج-${classFilter.value||'كل-الفصول'}.csv`,['الطالب','الفصل','المدرسة','الدرجة','المجموع','النسبة','المحاولة','المدة بالثواني','التاريخ'],visible.map(row=>[row.name,row.classroom,row.school||'',Number(row.score)||0,Number(row.total)||13,`${Number(row.percent)||0}%`,Number(row.attempts)||1,Number(row.duration_sec)||0,row.date||'']));
+    };
+    typeFilter.onchange=paintFeedback;
+    document.getElementById('export-feedback').onclick=()=>{
+      const visible=typeFilter.value?feedback.filter(item=>String(item.type||'')===typeFilter.value):feedback;
+      exportCsv(`الملاحظات-${typeFilter.value||'الكل'}.csv`,['التاريخ','نوع الرسالة','الاسم','الرسالة'],visible.map(item=>[item.date||'',item.type||'ملاحظة',item.name||'بدون اسم',item.message||'']));
+    };
+    document.getElementById('refresh').onclick=refreshDashboard;
+    paintResults();paintFeedback();
   }
 
   login();
